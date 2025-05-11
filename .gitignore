@@ -1,0 +1,3 @@
+.ollama
+venv
+*.pyc

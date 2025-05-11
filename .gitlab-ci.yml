@@ -1,0 +1,30 @@
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  GIT_SUBMODULE_STRATEGY: recursive
+  DOCKER_DRIVER: overlay2
+
+stages:
+  - test
+
+commitlint:
+  tags:
+    - docker
+  stage: test
+  image: node:22-alpine
+  needs: []
+  before_script:
+    - npm install -g @commitlint/cli @commitlint/config-angular
+  script:
+    - npx commitlint -V --from=HEAD~1
+
+pycodestyle:
+  tags:
+    - docker
+  stage: test
+  image: python:3.12-alpine
+  needs: []
+  before_script:
+    - pip install pycodestyle
+  script:
+    - pycodestyle unthink-proxy.py

@@ -1,0 +1,23 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - "${PWD:-./}:/app"
+      - "${PWD}/.ollama:/root/.ollama"
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_DEBUG=1
+
+  proxy:
+    build: .
+    ports:
+      - "11434:11434"
+    stdin_open: true
+    tty: true
