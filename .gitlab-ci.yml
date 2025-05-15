@@ -6,6 +6,8 @@ variables:
 
 stages:
   - test
+  - build
+  - deploy
 
 commitlint:
   tags:
@@ -28,3 +30,39 @@ pycodestyle:
     - pip install pycodestyle
   script:
     - pycodestyle unthink-proxy.py
+
+pytest:
+  tags:
+    - docker
+  stage: test
+  image: python:3.12-alpine
+  needs: []
+  before_script:
+    - pip install -r requirements.txt
+    - pip install pytest pytest-cov
+  script:
+    - pytest --cov=. --cov-report=term
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+build:
+  tags:
+    - docker
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  needs:
+    - pycodestyle
+    - pytest
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+  only:
+    - main

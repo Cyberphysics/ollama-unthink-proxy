@@ -2,42 +2,79 @@
 
 ## Description
 
-Very simple Ollama proxy that used to remove Chain-of-Thought process from
-raw LLM output. This repository is a temporary workaround until the community
-will find a better way to handle `think` tokens.
-
-Intended usage - LLM debug and development. Works rather well with Zed IDE.
-
-**Important**: NOT recommended for `PRODUCTION` as the code was written without
-performance optimization in mind.
+A production-ready Ollama proxy that removes Chain-of-Thought process from
+raw LLM output. This proxy filters out content between configurable thinking tags
+in LLM responses, providing clean output for applications.
 
 ## Features
 
-- Configurable `OPEN_THINK_TAG` and `CLOSE_THINK_TAG`;
-- Monitoring RAW LLM prompt;
-- Monitoring RAW LLM output;
-- Docker runtime;
-- Ollama included;
+- Configurable `OPEN_THINK_TAG` and `CLOSE_THINK_TAG`
+- Production-ready with Gunicorn/Waitress WSGI server
+- Comprehensive error handling and logging
+- Health check endpoint for monitoring
+- Prometheus metrics integration
+- Docker runtime with security best practices
+- Ollama integration with GPU support
+- Monitoring dashboard with Grafana
+- Automated testing with pytest
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| OLLAMA_SERVER | URL of the Ollama server | http://ollama:11434 |
+| PROXY_PORT | Port for the proxy server | 11434 |
+| OPEN_THINK_TAG | Tag that marks the beginning of thinking content | <think> |
+| CLOSE_THINK_TAG | Tag that marks the end of thinking content | </think> |
+| LOG_LEVEL | Logging level (DEBUG, INFO, WARNING, ERROR) | INFO |
+| LOG_DIR | Directory for log files | logs |
+| REQUEST_TIMEOUT | Timeout for requests to Ollama (seconds) | 60 |
+| MAX_RETRIES | Maximum number of retry attempts | 3 |
+| RETRY_DELAY | Delay between retry attempts (seconds) | 1 |
+| DEBUG_MODE | Enable debug mode | false |
 
 ## Setup
 
-### Docker (with ollama and Nvidia GPU)
+### Docker Compose (Recommended)
 
-```
-docker compose up
+```bash
+docker compose up -d
 ```
 
-### pip (standalone)
+This will start:
+- Ollama server with GPU support
+- Unthink proxy server
+- Prometheus for metrics collection
+- Grafana for monitoring dashboards
 
-```
+Access the services:
+- Proxy: http://localhost:11434
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000
+
+### Standalone Installation
+
+```bash
 python3 -m venv venv
 . venv/bin/activate
 pip install -r requirements.txt
-python3 unthink-proxy.py
+python3 unthink_proxy.py
+```
+
+## API Endpoints
+
+- `/api/generate`, `/api/chat`, `/api/show`: Proxied Ollama API endpoints
+- `/health`: Health check endpoint
+- `/metrics`: Prometheus metrics endpoint
+
+## Testing
+
+```bash
+pytest --cov=.
 ```
 
 ## Acknowledgments
 
-- https://github.com/vhanla/deepseek-r1-unthink for the initial version;
-- Ollama team for the LLM engine;
-- Flask for the easy-to-use App server;
+- https://github.com/vhanla/deepseek-r1-unthink for the initial version
+- Ollama team for the LLM engine
+- Flask for the web framework

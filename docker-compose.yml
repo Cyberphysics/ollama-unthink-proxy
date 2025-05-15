@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   ollama:
     image: ollama/ollama:latest
@@ -14,10 +16,58 @@ services:
               capabilities: [gpu]
     environment:
       - OLLAMA_DEBUG=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   proxy:
     build: .
     ports:
       - "11434:11434"
-    stdin_open: true
-    tty: true
+    environment:
+      - OLLAMA_SERVER=http://ollama:11434
+      - LOG_LEVEL=INFO
+      - REQUEST_TIMEOUT=60
+      - MAX_RETRIES=3
+    volumes:
+      - proxy_logs:/var/log/unthink-proxy
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    depends_on:
+      - proxy
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  proxy_logs:
+  prometheus_data:
+  grafana_data:
