@@ -8,14 +8,11 @@ services:
       - "${PWD}/.ollama:/root/.ollama"
     stdin_open: true
     tty: true
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: [gpu]
+    runtime: nvidia
     environment:
       - OLLAMA_DEBUG=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://localhost:11434/api/tags"]
