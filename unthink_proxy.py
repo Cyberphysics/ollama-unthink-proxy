@@ -43,6 +43,16 @@ resources = {
 }
 CORS(app, resources=resources)
 
+# 导入自定义中间件
+try:
+    from middleware import RequestLoggingMiddleware, ContentTypeFixMiddleware
+    # 应用中间件（顺序很重要）
+    app.wsgi_app = RequestLoggingMiddleware(app.wsgi_app)
+    app.wsgi_app = ContentTypeFixMiddleware(app.wsgi_app)
+    logger.info("已加载自定义中间件")
+except ImportError as e:
+    logger.warning(f"无法加载自定义中间件: {e}")
+
 # Apply metrics middleware
 app.wsgi_app = MetricsMiddleware(app.wsgi_app)
 
@@ -119,28 +129,35 @@ def proxy_api(path):
     start_time = time.time()
     request_id = f"{int(start_time)}-{os.getpid()}"
     
-    # 检查Content-Type
+    # 检查Content-Type，但更宽容地处理
     content_type = request.headers.get('Content-Type', '')
-    if not content_type.startswith('application/json'):
-        logger.warning(f"[{request_id}] Invalid Content-Type: {content_type}")
-        # 尝试解析请求数据
+    if DEBUG_MODE:
+        logger.debug(f"[{request_id}] Received Content-Type: {content_type}")
+    
+    # 尝试解析请求数据，无论Content-Type是什么
+    try:
+        # 首先尝试使用request.json
         try:
+            request_data = request.json
+        except Exception:
+            # 如果request.json解析失败，尝试手动解析
             data = request.get_data()
-            # 如果请求体看起来像JSON，尝试解析并转发
-            if data and (data.startswith(b'{') or data.startswith(b'[')):
-                request_json = json.loads(data)
+            if data:
+                request_data = json.loads(data)
             else:
+                logger.error(f"[{request_id}] Empty request body")
                 return Response(
-                    json.dumps({"error": "Content-Type must be application/json"}),
-                    status=415,
+                    json.dumps({"error": "Empty request body"}),
+                    status=400,
                     mimetype='application/json'
                 )
-        except json.JSONDecodeError:
-            return Response(
-                json.dumps({"error": "Content-Type must be application/json"}),
-                status=415,
-                mimetype='application/json'
-            )
+    except json.JSONDecodeError as e:
+        logger.error(f"[{request_id}] Invalid JSON format: {str(e)}")
+        return Response(
+            json.dumps({"error": f"Invalid JSON format: {str(e)}"}),
+            status=400,
+            mimetype='application/json'
+        )
     
     if DEBUG_MODE:
         logger.debug(f"[{request_id}] Request - Method: {request.method}")
@@ -169,6 +186,9 @@ def proxy_api(path):
                 status=400,
                 mimetype='application/json'
             )
+    
+    if DEBUG_MODE:
+        logger.debug(f"[{request_id}] Parsed request data: {request_data}")
     
     # Retry logic for resilience
     for attempt in range(MAX_RETRIES):

@@ -16,6 +16,7 @@ in LLM responses, providing clean output for applications.
 - Docker runtime with security best practices
 - Monitoring dashboard with Grafana
 - Automated testing with pytest
+- LiteLLM compatibility fixes
 
 ## Environment Variables
 
@@ -66,13 +67,29 @@ Access the services:
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000
 
-### Manual Setup
+## Integration with LiteLLM
 
-1. Edit `docker-compose.yml` to point to your Ollama server
-2. Start the services:
-   ```bash
-   docker compose up -d
-   ```
+When integrating with LiteLLM, you may need to configure LiteLLM to properly set the Content-Type header. This proxy includes middleware to handle requests with missing or incorrect Content-Type headers.
+
+### LiteLLM Configuration
+
+In your LiteLLM configuration, set the Ollama endpoint to point to this proxy:
+
+```yaml
+model_list:
+  - model_name: ollama/llama2
+    litellm_params:
+      model: ollama/llama2
+      api_base: http://your-proxy-address:11435
+```
+
+### Testing LiteLLM Integration
+
+Use the provided test script to verify the integration:
+
+```bash
+python litellm_adapter.py
+```
 
 ## API Endpoints
 
