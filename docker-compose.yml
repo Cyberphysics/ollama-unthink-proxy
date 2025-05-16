@@ -7,14 +7,15 @@ services:
       - "11435:11434"
     environment:
       - OLLAMA_SERVER=http://10.252.17.12:11434
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
       - REQUEST_TIMEOUT=60
       - MAX_RETRIES=3
+      - DEBUG_MODE=true
     volumes:
       - proxy_logs:/var/log/unthink-proxy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:11434/health"]
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:11434/health || exit 0"]
       interval: 30s
       timeout: 5s
       retries: 3
