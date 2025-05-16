@@ -1,43 +1,20 @@
 version: '3.8'
 
 services:
-  ollama:
-    image: ollama/ollama:latest
-    volumes:
-      - "${PWD:-./}:/app"
-      - "${PWD}/.ollama:/root/.ollama"
-    stdin_open: true
-    tty: true
-    runtime: nvidia
-    environment:
-      - OLLAMA_DEBUG=1
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
   proxy:
     build: .
     ports:
-      - "11434:11434"
+      - "11435:11434"
     environment:
-      - OLLAMA_SERVER=http://ollama:11434
+      - OLLAMA_SERVER=http://10.252.17.12:11434
       - LOG_LEVEL=INFO
       - REQUEST_TIMEOUT=60
       - MAX_RETRIES=3
     volumes:
       - proxy_logs:/var/log/unthink-proxy
-    depends_on:
-      ollama:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "/app/healthcheck.sh"]
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:11434/health"]
       interval: 30s
       timeout: 5s
       retries: 3

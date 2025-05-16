@@ -8,6 +8,7 @@ import time
 from logging.handlers import RotatingFileHandler
 import signal
 import sys
+from metrics import MetricsMiddleware, THINKING_CONTENT_REMOVED, OLLAMA_REQUEST_ERRORS, get_metrics
 
 # Configure logging
 log_dir = os.getenv("LOG_DIR", "logs")
@@ -42,6 +43,9 @@ resources = {
 }
 CORS(app, resources=resources)
 
+# Apply metrics middleware
+app.wsgi_app = MetricsMiddleware(app.wsgi_app)
+
 # Configuration
 OLLAMA_SERVER = os.getenv("OLLAMA_SERVER") or "http://ollama:11434"
 PROXY_PORT = int(os.getenv("PROXY_PORT") or 11434)
@@ -68,6 +72,8 @@ def process_thinking_content(
         thinking_finished = True
         # If there's content after CLOSE_THINK_TAG, keep it
         content_after = message_content.split(CLOSE_THINK_TAG)[-1]
+        # Increment metric for removed thinking content
+        THINKING_CONTENT_REMOVED.inc()
         return content_after, thinking_started, thinking_finished
 
     # Handle opening tag
@@ -101,6 +107,12 @@ def health_check():
                        status=503, mimetype='application/json')
 
 
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    """Prometheus metrics endpoint"""
+    return Response(get_metrics(), mimetype='text/plain')
+
+
 @app.route('/api/<path:path>', methods=['POST'])
 def proxy_api(path):
     """Proxy API requests to Ollama server"""
@@ -129,6 +141,8 @@ def proxy_api(path):
             response.raise_for_status()  # Raise exception for non-200 status codes
             break
         except requests.exceptions.RequestException as e:
+            error_type = type(e).__name__
+            OLLAMA_REQUEST_ERRORS.labels(error_type=error_type).inc()
             logger.error(f"[{request_id}] Request attempt {attempt+1} failed: {str(e)}")
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_DELAY)

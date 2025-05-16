@@ -14,7 +14,6 @@ in LLM responses, providing clean output for applications.
 - Health check endpoint for monitoring
 - Prometheus metrics integration
 - Docker runtime with security best practices
-- Ollama integration with GPU support
 - Monitoring dashboard with Grafana
 - Automated testing with pytest
 
@@ -33,33 +32,47 @@ in LLM responses, providing clean output for applications.
 | RETRY_DELAY | Delay between retry attempts (seconds) | 1 |
 | DEBUG_MODE | Enable debug mode | false |
 
-## Setup
+## Setup with Local Ollama Server
 
-### Docker Compose (Recommended)
+This setup uses an existing Ollama server running on the host machine.
+
+### Prerequisites
+
+1. Ensure Ollama is installed and running on your host machine
+2. Make sure Ollama is listening on all interfaces:
+   ```bash
+   # Add to ~/.ollama/.env
+   OLLAMA_HOST=0.0.0.0
+   ```
+3. Restart Ollama service
+
+### Quick Start
 
 ```bash
-docker compose up -d
+# Make the startup script executable
+chmod +x start-local.sh
+
+# Start the services
+./start-local.sh
 ```
 
 This will start:
-- Ollama server with GPU support
-- Unthink proxy server
+- Unthink proxy (connecting to host Ollama service)
 - Prometheus for metrics collection
 - Grafana for monitoring dashboards
 
 Access the services:
-- Proxy: http://localhost:11434
+- Proxy: http://localhost:11435
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000
 
-### Standalone Installation
+### Manual Setup
 
-```bash
-python3 -m venv venv
-. venv/bin/activate
-pip install -r requirements.txt
-python3 unthink_proxy.py
-```
+1. Edit `docker-compose.yml` to point to your Ollama server
+2. Start the services:
+   ```bash
+   docker compose up -d
+   ```
 
 ## API Endpoints
 
