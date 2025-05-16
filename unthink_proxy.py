@@ -43,15 +43,28 @@ resources = {
 }
 CORS(app, resources=resources)
 
-# 导入自定义中间件
-try:
-    from middleware import RequestLoggingMiddleware, ContentTypeFixMiddleware
-    # 应用中间件（顺序很重要）
-    app.wsgi_app = RequestLoggingMiddleware(app.wsgi_app)
-    app.wsgi_app = ContentTypeFixMiddleware(app.wsgi_app)
-    logger.info("已加载自定义中间件")
-except ImportError as e:
-    logger.warning(f"无法加载自定义中间件: {e}")
+# 内联定义中间件，避免导入问题
+class ContentTypeFixMiddleware:
+    """Content-Type修复中间件"""
+    
+    def __init__(self, app):
+        self.app = app
+    
+    def __call__(self, environ, start_response):
+        # 检查Content-Type
+        content_type = environ.get('CONTENT_TYPE', '')
+        
+        # 如果没有Content-Type或不是application/json，添加它
+        if not content_type or 'application/json' not in content_type.lower():
+            logger.debug(f"修复Content-Type: {content_type} -> application/json")
+            environ['CONTENT_TYPE'] = 'application/json'
+        
+        # 处理请求
+        return self.app(environ, start_response)
+
+# 应用中间件
+app.wsgi_app = ContentTypeFixMiddleware(app.wsgi_app)
+logger.info("已加载内联中间件")
 
 # Apply metrics middleware
 app.wsgi_app = MetricsMiddleware(app.wsgi_app)
@@ -129,6 +142,13 @@ def proxy_api(path):
     start_time = time.time()
     request_id = f"{int(start_time)}-{os.getpid()}"
     
+    # 记录请求头信息，帮助调试
+    if DEBUG_MODE:
+        logger.debug(f"[{request_id}] Request headers: {dict(request.headers)}")
+        logger.debug(f"[{request_id}] Request path: {path}")
+        logger.debug(f"[{request_id}] Request method: {request.method}")
+        logger.debug(f"[{request_id}] Request data: {request.get_data()}")
+    
     # 检查Content-Type，但更宽容地处理
     content_type = request.headers.get('Content-Type', '')
     if DEBUG_MODE:
@@ -139,11 +159,27 @@ def proxy_api(path):
         # 首先尝试使用request.json
         try:
             request_data = request.json
-        except Exception:
+        except Exception as e:
             # 如果request.json解析失败，尝试手动解析
+            logger.warning(f"[{request_id}] Failed to parse request.json: {str(e)}")
             data = request.get_data()
             if data:
-                request_data = json.loads(data)
+                try:
+                    request_data = json.loads(data)
+                except json.JSONDecodeError as e:
+                    logger.error(f"[{request_id}] Failed to parse request data: {str(e)}")
+                    # 尝试修复常见的JSON格式问题
+                    try:
+                        # 尝试将单引号替换为双引号
+                        fixed_data = data.decode('utf-8').replace("'", "\"")
+                        request_data = json.loads(fixed_data)
+                        logger.info(f"[{request_id}] Successfully fixed and parsed JSON")
+                    except Exception:
+                        return Response(
+                            json.dumps({"error": f"Invalid JSON format: {str(e)}"}),
+                            status=400,
+                            mimetype='application/json'
+                        )
             else:
                 logger.error(f"[{request_id}] Empty request body")
                 return Response(
@@ -190,13 +226,29 @@ def proxy_api(path):
     if DEBUG_MODE:
         logger.debug(f"[{request_id}] Parsed request data: {request_data}")
     
+    # 记录解析后的请求数据
+    if DEBUG_MODE:
+        logger.debug(f"[{request_id}] Parsed request data: {request_data}")
+    
+    # 构建请求头
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    
+    # 记录将要发送的请求
+    if DEBUG_MODE:
+        logger.debug(f"[{request_id}] Sending request to: {OLLAMA_SERVER}/api/{path}")
+        logger.debug(f"[{request_id}] With headers: {headers}")
+        logger.debug(f"[{request_id}] With data: {request_data}")
+    
     # Retry logic for resilience
     for attempt in range(MAX_RETRIES):
         try:
             response = requests.post(
                 f"{OLLAMA_SERVER}/api/{path}",
                 json=request_data,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 stream=True,
                 timeout=REQUEST_TIMEOUT
             )
