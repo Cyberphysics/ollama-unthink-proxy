@@ -119,22 +119,64 @@ def proxy_api(path):
     start_time = time.time()
     request_id = f"{int(start_time)}-{os.getpid()}"
     
+    # 检查Content-Type
+    content_type = request.headers.get('Content-Type', '')
+    if not content_type.startswith('application/json'):
+        logger.warning(f"[{request_id}] Invalid Content-Type: {content_type}")
+        # 尝试解析请求数据
+        try:
+            data = request.get_data()
+            # 如果请求体看起来像JSON，尝试解析并转发
+            if data and (data.startswith(b'{') or data.startswith(b'[')):
+                request_json = json.loads(data)
+            else:
+                return Response(
+                    json.dumps({"error": "Content-Type must be application/json"}),
+                    status=415,
+                    mimetype='application/json'
+                )
+        except json.JSONDecodeError:
+            return Response(
+                json.dumps({"error": "Content-Type must be application/json"}),
+                status=415,
+                mimetype='application/json'
+            )
+    
     if DEBUG_MODE:
         logger.debug(f"[{request_id}] Request - Method: {request.method}")
         logger.debug(f"[{request_id}] Request - Path: {path}")
         logger.debug(f"[{request_id}] Request - Headers: {dict(request.headers)}")
-        logger.debug(f"[{request_id}] Request - JSON: {request.json}")
+        try:
+            logger.debug(f"[{request_id}] Request - JSON: {request.json}")
+        except Exception as e:
+            logger.debug(f"[{request_id}] Error parsing JSON: {str(e)}")
     
     if path not in ['generate', 'chat', 'show']:
         logger.warning(f"[{request_id}] Invalid path requested: {path}")
         return Response('Not Found', status=404)
 
+    # 获取请求数据
+    try:
+        request_data = request.json
+    except Exception:
+        # 如果request.json解析失败，尝试手动解析
+        try:
+            request_data = json.loads(request.get_data())
+        except json.JSONDecodeError as e:
+            logger.error(f"[{request_id}] Failed to parse JSON: {str(e)}")
+            return Response(
+                json.dumps({"error": "Invalid JSON format"}),
+                status=400,
+                mimetype='application/json'
+            )
+    
     # Retry logic for resilience
     for attempt in range(MAX_RETRIES):
         try:
             response = requests.post(
                 f"{OLLAMA_SERVER}/api/{path}",
-                json=request.json,
+                json=request_data,
+                headers={"Content-Type": "application/json"},
                 stream=True,
                 timeout=REQUEST_TIMEOUT
             )
