@@ -1,0 +1,53 @@
+# Keep配置示例 - 用于与Unthink_proxy集成
+backend:
+  provision:
+    providers:
+      litellm:
+        name: litellm
+        type: litellm
+        authentication:
+          api_url: "http://10.252.17.12:11435"  # 指向Unthink_proxy
+          api_key: "xreal-litellm-master-key"
+          headers:
+            Content-Type: "application/json"
+            Accept: "application/json"
+          deduplication_rules:
+            deduplication_rule_name_example_1:
+              description: deduplication rule name example 1
+              fingerprint_fields:
+                - fingerprint
+                - source
+                - service
+              full_deduplication: true
+              ignore_fields:
+                - name
+                - lastReceived
+    workflows:
+      - id: alert-enrichment
+        name: alert-enrichment-example
+        description: "use LLM analize alert and give suggestions"
+        triggers:
+          - type: alert
+            filters:
+              - key: source
+                value: keep
+        steps:
+          - name: get-enrichments
+            provider:
+              config: "{{ providers.litellm }}"
+              type: litellm
+              with:
+                prompt: |
+                  You received such an alert {{alert}}, generate missing fields.
+
+                  Environment could be \"production\", \"staging\", \"development\".
+
+                  EXAMPLE JSON OUTPUT:
+                      {
+                          \"environment\": \"production\",
+                          \"impacted_customer_name\": \"Acme Corporation\"
+                      }
+
+                model: "ollama/llama2"  # 使用可用的模型
+                structured_output_format:
+                  type: json_object

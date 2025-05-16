@@ -54,8 +54,13 @@ class ContentTypeFixMiddleware:
         # 检查Content-Type
         content_type = environ.get('CONTENT_TYPE', '')
         
-        # 如果没有Content-Type或不是application/json，添加它
-        if not content_type or 'application/json' not in content_type.lower():
+        # 检查是否是LiteLLM请求
+        user_agent = environ.get('HTTP_USER_AGENT', '')
+        if 'litellm' in user_agent.lower() or not content_type:
+            # 对于LiteLLM请求或没有Content-Type的请求，强制设置Content-Type
+            logger.debug(f"修复LiteLLM请求的Content-Type: {content_type} -> application/json")
+            environ['CONTENT_TYPE'] = 'application/json'
+        elif not content_type or 'application/json' not in content_type.lower():
             logger.debug(f"修复Content-Type: {content_type} -> application/json")
             environ['CONTENT_TYPE'] = 'application/json'
         
@@ -149,6 +154,12 @@ def proxy_api(path):
         logger.debug(f"[{request_id}] Request method: {request.method}")
         logger.debug(f"[{request_id}] Request data: {request.get_data()}")
     
+    # 检查是否是LiteLLM请求
+    user_agent = request.headers.get('User-Agent', '')
+    is_litellm = 'litellm' in user_agent.lower()
+    if is_litellm and DEBUG_MODE:
+        logger.debug(f"[{request_id}] 检测到LiteLLM请求")
+    
     # 检查Content-Type，但更宽容地处理
     content_type = request.headers.get('Content-Type', '')
     if DEBUG_MODE:
@@ -167,19 +178,37 @@ def proxy_api(path):
                 try:
                     request_data = json.loads(data)
                 except json.JSONDecodeError as e:
-                    logger.error(f"[{request_id}] Failed to parse request data: {str(e)}")
-                    # 尝试修复常见的JSON格式问题
-                    try:
-                        # 尝试将单引号替换为双引号
-                        fixed_data = data.decode('utf-8').replace("'", "\"")
-                        request_data = json.loads(fixed_data)
-                        logger.info(f"[{request_id}] Successfully fixed and parsed JSON")
-                    except Exception:
-                        return Response(
-                            json.dumps({"error": f"Invalid JSON format: {str(e)}"}),
-                            status=400,
-                            mimetype='application/json'
-                        )
+                    # 对于LiteLLM请求，尝试特殊处理
+                    if is_litellm:
+                        logger.info(f"[{request_id}] 检测到LiteLLM请求，尝试特殊处理")
+                        # 将请求体作为字符串读取
+                        data_str = data.decode('utf-8')
+                        # 尝试修复常见的JSON格式问题
+                        try:
+                            # 尝试将单引号替换为双引号
+                            fixed_data = data_str.replace("'", "\"")
+                            request_data = json.loads(fixed_data)
+                            logger.info(f"[{request_id}] Successfully fixed and parsed JSON")
+                        except Exception:
+                            return Response(
+                                json.dumps({"error": f"Invalid JSON format: {str(e)}"}),
+                                status=400,
+                                mimetype='application/json'
+                            )
+                    else:
+                        logger.error(f"[{request_id}] Failed to parse request data: {str(e)}")
+                        # 尝试修复常见的JSON格式问题
+                        try:
+                            # 尝试将单引号替换为双引号
+                            fixed_data = data.decode('utf-8').replace("'", "\"")
+                            request_data = json.loads(fixed_data)
+                            logger.info(f"[{request_id}] Successfully fixed and parsed JSON")
+                        except Exception:
+                            return Response(
+                                json.dumps({"error": f"Invalid JSON format: {str(e)}"}),
+                                status=400,
+                                mimetype='application/json'
+                            )
             else:
                 logger.error(f"[{request_id}] Empty request body")
                 return Response(
@@ -229,6 +258,37 @@ def proxy_api(path):
     # 记录解析后的请求数据
     if DEBUG_MODE:
         logger.debug(f"[{request_id}] Parsed request data: {request_data}")
+    
+    # 处理LiteLLM特殊请求格式
+    user_agent = request.headers.get('User-Agent', '')
+    is_litellm = 'litellm' in user_agent.lower()
+    
+    # 如果是LiteLLM请求，检查是否需要转换格式
+    if is_litellm and path == 'generate' and 'prompt' in request_data:
+        logger.info(f"[{request_id}] 转换LiteLLM generate请求格式为chat格式")
+        # 将generate格式转换为chat格式
+        try:
+            chat_data = {
+                "model": request_data.get("model", ""),
+                "messages": [
+                    {"role": "user", "content": request_data.get("prompt", "")}
+                ],
+                "stream": request_data.get("stream", False)
+            }
+            
+            # 如果有options，转换相关参数
+            if "options" in request_data:
+                options = request_data["options"]
+                if "temperature" in options:
+                    chat_data["temperature"] = options["temperature"]
+                if "num_predict" in options:
+                    chat_data["max_tokens"] = options["num_predict"]
+            
+            request_data = chat_data
+            path = "chat"  # 改为使用chat API
+            logger.info(f"[{request_id}] 已转换为chat格式: {request_data}")
+        except Exception as e:
+            logger.error(f"[{request_id}] 转换LiteLLM请求格式失败: {str(e)}")
     
     # 构建请求头
     headers = {

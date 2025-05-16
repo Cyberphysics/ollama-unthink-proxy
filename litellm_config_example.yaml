@@ -1,0 +1,22 @@
+# LiteLLM配置示例 - 用于与Unthink_proxy集成
+model_list:
+  - model_name: ollama/llama2
+    litellm_params:
+      model: llama2
+      api_base: http://10.252.17.12:11435
+      api_key: fake-key
+      headers:
+        Content-Type: application/json
+        Accept: application/json
+
+litellm_settings:
+  # 失败时重试
+  num_retries: 3
+  # 请求超时时间
+  request_timeout: 600
+  # 详细日志
+  verbose: true
+  # 缓存设置
+  cache: false
+  # 回退模型
+  fallbacks: []

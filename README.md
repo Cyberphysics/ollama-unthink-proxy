@@ -73,23 +73,48 @@ When integrating with LiteLLM, you may need to configure LiteLLM to properly set
 
 ### LiteLLM Configuration
 
-In your LiteLLM configuration, set the Ollama endpoint to point to this proxy:
+In your LiteLLM configuration, set the Ollama endpoint to point to this proxy and add headers:
 
 ```yaml
 model_list:
   - model_name: ollama/llama2
     litellm_params:
-      model: ollama/llama2
+      model: llama2
       api_base: http://your-proxy-address:11435
+      api_key: fake-key
+      headers:
+        Content-Type: application/json
+        Accept: application/json
 ```
 
-### Testing LiteLLM Integration
+See `litellm_config_example.yaml` for a complete example.
 
-Use the provided test script to verify the integration:
+### Keep Configuration
 
-```bash
-python litellm_adapter.py
+When using with Keep, configure the LiteLLM provider to include headers:
+
+```yaml
+backend:
+  provision:
+    providers:
+      litellm:
+        authentication:
+          api_url: "http://your-proxy-address:11435"
+          api_key: "your-api-key"
+          headers:
+            Content-Type: "application/json"
+            Accept: "application/json"
 ```
+
+See `keep_config_example.yaml` for a complete example.
+
+### Special Handling for LiteLLM
+
+This proxy includes special handling for LiteLLM requests:
+
+1. Automatic Content-Type fixing for requests without proper headers
+2. Format conversion from LiteLLM's `generate` format to Ollama's `chat` format
+3. Enhanced error handling and debugging for LiteLLM requests
 
 ## API Endpoints
 
